@@ -1,54 +1,71 @@
 use chrono::{DateTime, Utc};
 use std::fs;
+use std::fs::DirEntry;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct Image {
+struct JsonData {
     title: String,
     date: String,
+    galleries: Vec<Gallery>,
     performers: Vec<String>,
     tags: Vec<String>,
     files: Vec<String>,
     created_at: String,
-    updated_at: String
+    updated_at: String,
 }
-
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct Gallery {
+    title: String,
+}
 fn main() {
     let mut arguments: Vec<String> = std::env::args().collect();
-
     if arguments.len() > 4 {
         println!("Too many Arguments:")
     }
-
     let directory_path = arguments.get(2)
         .expect("Please provide a Metadata dir. (Stash-exported json files)");
-
     if let Ok(entries) = fs::read_dir(directory_path) {
         for entry in entries {
             if let Ok(entry) = entry {
-                let file_path = entry.path();
-                if let Some(extension) = file_path.extension() {
-                    if extension.eq("json") {
-                        update_metadata(file_path.to_string_lossy().to_string());
-                    }
-                }
+                process_entry(entry);
             }
         }
     } else {
         eprintln!("Error reading directory");
     }
 }
-fn update_metadata(json_file_path: String) {
-    let image_string: String = fs::read_to_string(&json_file_path.as_str()).expect("Json File not Readable!");
-    let mut image: Image = serde_json::from_str(&image_string.as_str()).expect("Json Config not valid!");
-    image.files = vec!["C:\\Users\\maximizzar\\Downloads\\S_20240308_Girl_VB.png".to_string()];
+fn process_entry(entry: DirEntry) {
+    let json_file_path = entry.path();
+    let json_string: String = fs::read_to_string(&json_file_path.as_os_str()).expect("Json File not Readable!");
+    let image: JsonData = serde_json::from_str(&json_string.to_string().as_str()).expect("Json Config not valid!");
 
-    let new_date = get_date(&image);
-    let new_performers = get_performers(&image);
-    write_to_json(new_date, new_performers, &mut image, json_file_path);
+    if let Some(extension) = json_file_path.extension() {
+        if extension.eq("json") {
+            update_metadata(image, json_file_path);
+        }
+    } else {
+        eprintln!("Not a json config!");
+    }
 }
-fn get_date(image: &Image) -> Option<String> {
+fn update_metadata(mut image: JsonData, json_file_path: PathBuf) {
+    image.title = get_title(&image).unwrap();
+    image.date = get_date(&image).unwrap();
+    image.galleries = get_galleries(&image).unwrap();
+    image.performers = get_performers(&image).unwrap();
+    image.tags = get_tags(&image).unwrap();
+
+    write_to_json(&mut image, json_file_path.to_str().unwrap());
+}
+fn get_title(image: &JsonData) -> Option<String> {
+    if image.title.is_empty() {
+        let image_path = Path::new(image.files.get(0).unwrap());
+        Some(image_path.file_name());
+    }
+    None
+}
+fn get_date(image: &JsonData) -> Option<String> {
     if image.date.is_empty() {
         match fs::metadata(image.files.get(0).unwrap()) {
             Ok(metadata) => {
@@ -65,25 +82,32 @@ fn get_date(image: &Image) -> Option<String> {
     }
     return None
 }
-fn get_performers(image: &Image) -> Option<Vec<String>> {
-    if image.performers.is_empty() {
-        let file_path = "C:\\Users\\maximizzar\\Desktop\\Desk";
-        let parent_dir = Path::new(file_path).parent();
-        Some(parent_dir);
+fn get_galleries(image: &JsonData) -> Option<Vec<Gallery>> {
+    if image.galleries.is_empty() {
+
     }
     None
 }
-fn write_to_json(new_date: Option<String>, new_performers: Option<Vec<String>>, image: &mut Image,
-                 json_file_path: String) {
-    if new_date.is_none() && new_performers.is_none() {
-        return;
+fn get_performers(image: &JsonData) -> Option<Vec<String>> {
+    if image.performers.is_empty() {
+        let file_path = &image.files.get(0).unwrap().to_string();
+        let parent_dir = Path::new(file_path).parent();
+        Some(parent_dir.is_some());
     }
-    if new_date.is_some() {
-        image.date = new_date.unwrap();
+    None
+}
+fn get_tags(image: &JsonData) -> Option<Vec<String>> {
+    if image.tags.is_empty() {
+
     }
-    if new_performers.is_some() {
-        image.performers = new_performers.unwrap();
-    }
+    None
+}
+
+fn write_to_json(image: &mut JsonData, json_file_path: &str) {
+    image.title = get_title(&image).is_some().to_string();
+    image.date = get_date(&image).is_some().to_string();
+    image.performers = get_performers(&image).unwrap();
+
     let image_string = serde_json::to_string_pretty(image).expect("Image Struct was damaged.");
     fs::write(&json_file_path, image_string).expect("Json File not Writeable!");
 }

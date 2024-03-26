@@ -1,93 +1,83 @@
-use std::option::Option;
-use chrono::{DateTime, Utc};
-use std::fs;
-use std::fs::DirEntry;
-use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::ops::Deref;
+use regex::Regex;
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, PartialEq, serde::Serialize)]
 struct JsonData {
+    #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     galleries: Option<Vec<Gallery>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     performers: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     tags: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     files: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     created_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     updated_at: Option<String>,
 }
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, PartialEq, serde::Serialize)]
 struct Gallery {
     title: String,
 }
+
+// Any value that is present is considered Some value, including null.
+fn deserialize_some<'de, T, D>(deserializer: D) -> Result<Option<T>, D::Error>
+    where T: serde::Deserialize<'de>, D: serde::Deserializer<'de> {
+    serde::Deserialize::deserialize(deserializer).map(Some)
+}
+
 fn main() {
-    let mut arguments: Vec<String> = std::env::args().collect();
-    if arguments.len() > 4 {
-        println!("Too many Arguments:")
+    let arguments: Vec<String> = std::env::args().collect();
+    if arguments.len() > 4  {
+        eprintln!("Too many Arguments!");
+        std::process::exit(1);
     }
-    let directory_path = arguments.get(2)
-        .expect("Please provide a Metadata dir. (Stash-exported json files)");
-    if let Ok(entries) = fs::read_dir(directory_path) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                process_entry(entry);
+    if let Some(index) = &arguments.iter().position(|arg| arg == "--directory_path") {
+        let directory_path = arguments.get(index + 1).unwrap().deref();
+        let dry_run = arguments.clone().iter().any(|arg| arg == "--dry-run");
+
+        if let Ok(entries) = std::fs::read_dir(directory_path) {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    process_entry(entry, dry_run);
+                }
             }
         }
     } else {
-        eprintln!("Error reading directory");
+        eprintln!("Please Provide a valid Path (Stash-exported json files");
     }
 }
-fn process_entry(entry: DirEntry) {
+fn process_entry(entry: std::fs::DirEntry, dry_run: bool) {
     let json_file_path = entry.path();
-    let json_string: String = fs::read_to_string(&json_file_path.as_os_str()).expect("Json File not Readable!");
-    let image: JsonData = serde_json::from_str(&json_string.to_string().as_str()).expect("Json Config not valid!");
+    let json_string: String = std::fs::read_to_string(&json_file_path).expect("Json File not Readable!");
+    let mut image: JsonData = serde_json::from_str(&json_string.to_string().as_str()).expect("Json Config not valid!");
 
-    if let Some(extension) = json_file_path.extension() {
-        if extension.eq("json") {
-            update_metadata(image, json_file_path);
-        }
-    } else {
-        eprintln!("Not a json config!");
+    if image.title.is_none() {
+        image.title = get_file_name(&image);
     }
-}
-fn update_metadata(mut image: JsonData, json_file_path: PathBuf) {
-    image.title = get_title(&image);
-    image.date = get_date(&image);
-    image.galleries = get_galleries(&image);
-    image.performers = get_performers(&image);
-    image.tags = get_tags(&image);
-
-    //write_to_json(&image, json_file_path.to_str().unwrap());
-}
-fn get_title(image: &JsonData) -> Option<String> {
-
-    if let Some(files) = &image.files {
-        if let Some(first_file) = files.get(0) {
-            // Extract the file path as a String
-            let file_path = Path::new(&first_file.to_string());
-            // Return the title as an Option<String>
-            Some(file_path.parent().unwrap().to_string_lossy().to_string()).unwrap();
-        } else {
-            return None;
-            // Return None if the files vector is empty
-        }
-    } else {
-        return None;
-        // Return None if the files field is None
+    if image.date.is_none() {
+        image.date = get_date(&image);
     }
-
-    let file_path: String = (&image.files.unwrap().get(0).unwrap()).to_string();
-    match &image.files {
-        Some(files) => Path::new(&file_path),
-        None => {None.unwrap()}
-    };
-    None
+    update_json(&image, &json_file_path.to_str().unwrap().to_string(), dry_run);
 }
-fn get_date(image: &JsonData) -> Option<String> {
-    match fs::metadata(image.files.unwrap().as_slice().get(0).unwrap()) {
+
+fn get_file_name(image: &JsonData) -> Option<String> {
+    let path_str: String = image.files.to_owned().unwrap().get(0).unwrap().as_str().to_string();
+    let file_name = std::path::Path::new(&path_str).file_stem().unwrap().to_str().unwrap();
+    Some(file_name.to_string())
+}
+fn get_file_metadata(image: &JsonData) -> Option<String> {
+    let file_path: String = image.files.to_owned().unwrap().get(0).unwrap().as_str().to_string();
+
+    match std::fs::metadata(file_path) {
         Ok(metadata) => {
             if let Ok(modified_time) = metadata.modified() {
-                let datetime: DateTime<Utc> = DateTime::from(modified_time);
+                let datetime: chrono::DateTime<chrono::Utc> = chrono::DateTime::from(modified_time);
                 let formatted_date = datetime.format("%Y-%m-%d").to_string();
                 return Some(formatted_date)
             } else {
@@ -96,24 +86,76 @@ fn get_date(image: &JsonData) -> Option<String> {
         },
         Err(e) => eprintln!("Error: {}", e),
     }
-    return None
-}
-fn get_galleries(image: &JsonData) -> Option<Vec<Gallery>> {
-    None
-}
-fn get_performers(image: &JsonData) -> Option<Vec<String>> {
-    if image.files.is_some() {
-        let file_path = image.files.unwrap().get(0);
-        let parent_dir = Path::parent((&file_path.unwrap().to_string().as_str()).as_ref());
-        Some(parent_dir);
-    }
-    None
-}
-fn get_tags(image: &JsonData) -> Option<Vec<String>> {
     None
 }
 
-fn write_to_json(image: &mut JsonData, json_file_path: &str) {
-    let image_string = serde_json::to_string_pretty(image).expect("Image Struct was damaged.");
-    fs::write(&json_file_path, image_string).expect("Json File not Writeable!");
+fn get_date(image: &JsonData) -> Option<String> {
+    //get_date_from_filename
+    let mut date = get_date_from_string(get_file_name(&image));
+    if let Some(date) = date {
+        return Option::from(date);
+    }
+    //get_date_from_title
+    date = get_date_from_string(Some(image.title.clone().unwrap()));
+    if let Some(date) = date {
+        println!("get_date_from_title: {}", date);
+        return Option::from(date);
+    }
+    //get_file_metadata
+    date = get_file_metadata(&image);
+    if let Some(date) = date {
+        println!("get_file_metadata: {}", date);
+        return Option::from(date);
+    }
+    fn get_date_from_string(date_string: Option<String>) -> Option<String> {
+        fn convert_date(input_date: &str) -> Option<String> {
+            let date_formats = &["%Y%m%d", "%Y-%m-%d", "%d%m%Y", "%d-%m-%Y"];
+            let output_format = "%Y-%m-%d";
+
+            for date_format in date_formats {
+                match chrono::NaiveDate::parse_from_str(input_date, date_format) {
+                    Ok(date_obj) => {
+                        return Some(date_obj.format(output_format).to_string());
+                    },
+                    Err(_) => continue,
+                }
+            }
+
+            None
+        }
+
+        if date_string.is_none() {
+            return None;
+        }
+
+        let date_formats = vec![
+            r"\d{4}\d{2}\d{2}",     // YYYYMMDD
+            r"\d{4}-\d{2}-\d{2}",   // YYYY-MM-DD
+            r"\d{2}\d{2}\d{4}",     // DDMMYYYY
+            r"\d{2}-\d{2}-\d{4}",   // DD-MM-YYYY
+        ];
+
+        for format in date_formats {
+            let re = Regex::new(format).unwrap();
+            if let Some(captures) = re.captures(date_string.clone().unwrap().to_string().as_str()) {
+                if let Some(date) = captures.get(0) {
+                    if let Some(converted_date) = convert_date(date.as_str()) {
+                        return Some(converted_date);
+                    }
+                }
+            }
+        }
+        None
+    }
+    None
+}
+
+fn update_json(json_data: &JsonData, json_file_path: &String, dry_run: bool) {
+    if dry_run {
+        let json_string = serde_json::to_string(&json_data).unwrap();
+        println!("{json_string}");
+        return;
+    }
+    let json_string = serde_json::to_string_pretty(&json_data).unwrap();
+    std::fs::write(json_file_path, json_string).expect("Json File not Writeable!");
 }

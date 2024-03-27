@@ -1,4 +1,5 @@
 use regex::Regex;
+use crate::performer::Performer;
 
 #[derive(Debug, serde::Deserialize, PartialEq, serde::Serialize)]
 struct Image {
@@ -25,23 +26,24 @@ struct Gallery {
     title: String,
 }
 
-pub(crate) fn process_entry(entry: std::fs::DirEntry, dry_run: bool) {
+pub(crate) fn process_entry(entry: std::fs::DirEntry, dry_run: bool, performers: &Vec<Performer>) {
     let json_file_path = entry.path();
     let json_string: String = std::fs::read_to_string(&json_file_path).expect("Json File not Readable!");
     let mut image: Image = serde_json::from_str(&json_string.to_string().as_str()).expect("Json Config not valid!");
 
     if image.title.is_none() {
-        image.title = get_file_name(&image);
+        image.title = get_file_name(&image.files.to_owned().unwrap().get(0).unwrap().as_str());
     }
     if image.date.is_none() {
         image.date = get_date(&image);
     }
-
+    if image.performers.is_none() {
+        image.performers = get_performers(&image, &performers);
+    }
     update_json(&image, &json_file_path.to_str().unwrap().to_string(), dry_run);
 }
 
-fn get_file_name(image: &Image) -> Option<String> {
-    let path_str: String = image.files.to_owned().unwrap().get(0).unwrap().as_str().to_string();
+fn get_file_name(path_str: &str) -> Option<String> {
     let file_name = std::path::Path::new(&path_str).file_stem().unwrap().to_str().unwrap();
     Some(file_name.to_string())
 }
@@ -66,20 +68,18 @@ fn get_file_mtime(image: &Image) -> Option<String> {
 
 fn get_date(image: &Image) -> Option<String> {
     //get_date_from_filename
-    let mut date = get_date_from_string(get_file_name(&image));
+    let mut date = get_date_from_string(get_file_name(&image.files.to_owned().unwrap().get(0).unwrap().as_str()));
     if let Some(date) = date {
         return Option::from(date);
     }
     //get_date_from_title
     date = get_date_from_string(Some(image.title.clone().unwrap()));
     if let Some(date) = date {
-        println!("get_date_from_title: {}", date);
         return Option::from(date);
     }
     //get_file_metadata
     date = get_file_mtime(&image);
     if let Some(date) = date {
-        println!("get_file_metadata: {}", date);
         return Option::from(date);
     }
     fn get_date_from_string(date_string: Option<String>) -> Option<String> {
@@ -124,8 +124,23 @@ fn get_date(image: &Image) -> Option<String> {
     }
     None
 }
+fn get_performers(image: &Image, performers: &Vec<Performer>) -> Option<Vec<String>> {
+    let binding = image.files.as_ref().unwrap().get(0).unwrap().as_str();
+    let image_parent_directory = std::path::Path::new(&binding).parent().unwrap().to_str().unwrap();
 
-
+    if image.performers.as_ref().is_none() {
+        let normalized_dir_name = normalize_string(get_file_name(image_parent_directory).unwrap().as_str());
+        for performer in performers {
+            if normalized_dir_name.eq(&normalize_string(performer.name.as_ref().unwrap().as_str())) {
+                return Some(vec![performer.name.as_ref().unwrap().to_string()]);
+            }
+        }
+    }
+    fn normalize_string(raw_str: &str) -> String {
+      return raw_str.to_lowercase().replace(|c: char| c == '-' || c == '_' || c == ' ', "").to_string();
+    }
+    None
+}
 fn update_json(json_data: &Image, json_file_path: &String, dry_run: bool) {
     if dry_run {
         let json_string = serde_json::to_string(&json_data).unwrap();

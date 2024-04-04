@@ -54,7 +54,6 @@ pub fn init_performers_vector(performers: String) -> Vec<Performer> {
             if let Ok(entry) = entry {
                 let performer_vector_entry = process_entry(entry);
                 if performer_vector_entry.is_some() {
-                    //println!("{}", &<std::option::Option<std::string::String> as Clone>::clone(&performer_vector_entry.as_ref().unwrap().name).unwrap());
                     performer_vector.push(performer_vector_entry.unwrap());
                 }
             }

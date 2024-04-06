@@ -1,4 +1,4 @@
-use regex::Regex;
+use regex::{Regex, Replacer};
 use crate::performer::Performer;
 
 #[derive(Debug, serde::Deserialize, PartialEq, serde::Serialize)]
@@ -7,6 +7,8 @@ struct Image {
     title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    organized: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     galleries: Option<Vec<Gallery>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -23,13 +25,17 @@ struct Image {
 
 #[derive(Debug, serde::Deserialize, PartialEq, serde::Serialize)]
 struct Gallery {
-    title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) zip_files: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) folder_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) title: Option<String>,
 }
-
-pub(crate) fn process_entry(entry: std::fs::DirEntry, dry_run: bool, performers: &Vec<Performer>) {
+pub(crate) fn process_entry(entry: std::fs::DirEntry, performers: &Vec<Performer>, dry_run: bool) {
     let json_file_path = entry.path();
-    let json_string: String = std::fs::read_to_string(&json_file_path).expect("Json File not Readable!");
-    let mut image: Image = serde_json::from_str(&json_string.to_string().as_str()).expect("Json Config not valid!");
+    let json_string: String = std::fs::read_to_string(&json_file_path).expect("Json File not Readable");
+    let mut image: Image = serde_json::from_str(&json_string.to_string().as_str()).expect("Json Config not valid");
 
     if image.title.is_none() {
         image.title = get_file_name(&image.files.to_owned().unwrap().get(0).unwrap().as_str());
@@ -42,16 +48,14 @@ pub(crate) fn process_entry(entry: std::fs::DirEntry, dry_run: bool, performers:
     }
     update_json(&image, &json_file_path.to_str().unwrap().to_string(), dry_run);
 }
-
 fn get_file_name(path_str: &str) -> Option<String> {
     let file_name = std::path::Path::new(&path_str).file_stem().unwrap().to_str().unwrap();
     Some(file_name.to_string())
 }
-
 fn get_file_mtime(image: &Image) -> Option<String> {
     let file_path: String = image.files.to_owned().unwrap().get(0).unwrap().as_str().to_string();
 
-    match std::fs::metadata(file_path) {
+    match std::fs::metadata(file_path.clone()) {
         Ok(metadata) => {
             if let Ok(modified_time) = metadata.modified() {
                 let datetime: chrono::DateTime<chrono::Utc> = chrono::DateTime::from(modified_time);
@@ -61,11 +65,10 @@ fn get_file_mtime(image: &Image) -> Option<String> {
                 eprintln!("Failed to get modified time")
             }
         }
-        Err(e) => eprintln!("Error: {}", e),
+        Err(e) => eprintln!("Error: {}\nPath: {}\n", e, file_path.to_string().as_str()),
     }
     None
 }
-
 fn get_date(image: &Image) -> Option<String> {
     //get_date_from_filename
     let mut date = get_date_from_string(get_file_name(&image.files.to_owned().unwrap().get(0).unwrap().as_str()));
@@ -141,6 +144,7 @@ fn get_performers(image: &Image, performers: &Vec<Performer>) -> Option<Vec<Stri
     }
     None
 }
+
 fn update_json(json_data: &Image, json_file_path: &String, dry_run: bool) {
     if dry_run {
         let json_string = serde_json::to_string(&json_data).unwrap();

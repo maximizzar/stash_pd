@@ -1,49 +1,7 @@
 #[derive(Debug, serde::Deserialize, PartialEq, serde::Serialize)]
 pub(crate) struct Performer {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    twitter: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    instagram: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    birthdate: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    death_date: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    ethnicity: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    country: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    hair_color: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    eye_color: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    height: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    weight: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    measurements: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    fake_tits: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    career_length: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tattoos: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    piercings: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    image: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    created_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    updated_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    rating: Option<u8>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    details: Option<String>,
+    pub(crate) name: Option<String>
 }
 
 pub fn init_performers_vector(performers: String) -> Vec<Performer> {
